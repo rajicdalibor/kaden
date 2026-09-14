@@ -6,7 +6,8 @@
   "scripts": {
     "build": "tsc --noEmit",
     "test": "vitest run",
-    "demo": "tsx src/run-fixtures.ts"
+    "demo": "tsx src/run-fixtures.ts",
+    "history": "tsx src/run-history.ts"
   },
   "dependencies": { "@kaden/shared-types": "workspace:*" },
   "devDependencies": { "tsx": "^4.19.2", "vitest": "^2.1.8", "typescript": "^5.6.3", "@types/node": "^22.0.0" }

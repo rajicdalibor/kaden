@@ -1,0 +1,21 @@
+# deps
+node_modules/
+
+# secrets — NIKAD u repo (CLAUDE.md pravilo #4)
+.env
+.env.*
+!.env.example
+
+# build output
+dist/
+lib/
+*.tsbuildinfo
+
+# lokalni artefakti (mogu sadržati realne trening podatke)
+summary.local.json
+*.local.json
+*.local.csv
+
+# os / editor
+.DS_Store
+*.log
