@@ -1,0 +1,9 @@
+{
+  "name": "@kaden/shared-types",
+  "version": "0.0.0",
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": { "build": "tsc --noEmit", "test": "echo 'no tests' " },
+  "dependencies": { "zod": "^3.23.8" }
+}

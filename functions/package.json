@@ -1,0 +1,22 @@
+{
+  "name": "@kaden/functions",
+  "version": "0.0.0",
+  "type": "module",
+  "main": "lib/index.js",
+  "engines": { "node": "22" },
+  "scripts": {
+    "build": "tsc",
+    "serve": "npm run build && firebase emulators:start --only functions",
+    "deploy": "firebase deploy --only functions",
+    "test": "echo 'add tests'"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.32.1",
+    "@kaden/metrics": "workspace:*",
+    "@kaden/shared-types": "workspace:*",
+    "firebase-admin": "^13.0.1",
+    "firebase-functions": "^6.1.1",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": { "typescript": "^5.6.3" }
+}
