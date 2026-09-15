@@ -11,6 +11,10 @@ import {
   isoWeek,
   polarizationIndex,
   buildMetricsSummary,
+  vdotFromRace,
+  racePredictionSec,
+  trainingPaces,
+  paceSecPerKm,
 } from "../src/index.js";
 import { AthleteProfile, type RawSession } from "@kaden/shared-types";
 
@@ -65,6 +69,26 @@ describe("polarizationIndex", () => {
     const polarized = polarizationIndex([70, 15, 5, 7, 3])!;
     const threshold = polarizationIndex([20, 20, 40, 15, 5])!;
     expect(polarized).toBeGreaterThan(threshold);
+  });
+});
+
+describe("vdot (Daniels)", () => {
+  it("5k za 20:00 → VDOT ~50", () => {
+    const v = vdotFromRace(5000, 20 * 60);
+    expect(v).toBeGreaterThan(49);
+    expect(v).toBeLessThan(51);
+  });
+  it("predikcija je inverz VDOT-a (round-trip)", () => {
+    const v = vdotFromRace(5000, 20 * 60);
+    expect(racePredictionSec(v, 5000)).toBeCloseTo(1200, -1); // ~1200s
+  });
+  it("threshold tempo za VDOT 50 ~4:15/km", () => {
+    const t = trainingPaces(50).threshold;
+    expect(t).toBeGreaterThan(250);
+    expect(t).toBeLessThan(262);
+  });
+  it("brži tempo za viši VDOT", () => {
+    expect(paceSecPerKm(55, 0.88)).toBeLessThan(paceSecPerKm(45, 0.88));
   });
 });
 

@@ -141,7 +141,8 @@ export const GoalContext = z.object({
   dateISO: z.string().optional(),
   weeksToRace: z.number().nullable(),        // null ako nema datuma
   phase: TrainingPhase,
-  targetPaceSecPerKm: z.number().nullable(), // iz VDOT-a; null ako nepoznato
+  targetPaceSecPerKm: z.number().nullable(), // ciljni trkački tempo (iz cilja)
+  requiredVdot: z.number().nullable(),       // VDOT potreban za cilj (deterministički)
 });
 export type GoalContext = z.infer<typeof GoalContext>;
 

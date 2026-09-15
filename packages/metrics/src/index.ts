@@ -9,6 +9,8 @@ export * from "./load.js";
 export * from "./summary.js";
 export * from "./csv-import.js";
 export * from "./fit-import.js";
+export * from "./vdot.js";
+export * from "./goal-context.js";
 
 /** Glavni ulaz: sirova sesija + profil -> per-session metrike. Deterministički, bez LLM-a. */
 export function computeSessionMetrics(

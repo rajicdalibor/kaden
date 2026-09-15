@@ -7,7 +7,7 @@ import { readFileSync, readdirSync, existsSync, unlinkSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
 import { AthleteProfile, type RawSession, type CoachingMemory } from "@kaden/shared-types";
-import { computeSessionMetrics } from "@kaden/metrics";
+import { computeSessionMetrics, buildGoalContext, fmtPace } from "@kaden/metrics";
 import { analyzeSession } from "./coach.js";
 import { mergeMemory } from "./memory-local.js";
 
@@ -51,7 +51,7 @@ if (existsSync(memPath)) unlinkSync(memPath); // čist replay
 let memory: CoachingMemory = { observations: [], respondsWellTo: [], avoid: [] };
 
 const today = "2026-09-15";
-const weeksToRace = Math.round(((Date.parse("2026-10-11") - Date.parse(today)) / (7 * 86400000)) * 10) / 10;
+const goalContext = buildGoalContext(profile, today);
 
 console.log(`Replay ${items.length} sesija hronološki (memorija se akumulira)\n${"═".repeat(64)}`);
 let lastFull: any = null;
@@ -71,7 +71,9 @@ for (let i = 0; i < items.length; i++) {
       praktičnaPravila: "recovery <145, long 140-152, tempo 155-169, intervali 167-176, siva zona 150-160",
       kadencaCilj: "164-167 spm",
     },
-    goalContext: { race: "Zagreb polumaraton", dateISO: "2026-10-11", weeksToRace, cilj: "sub-2h (5:41/km)" },
+    goalContext: goalContext
+      ? { ...goalContext, ciljniTempo: goalContext.targetPaceSecPerKm ? fmtPace(goalContext.targetPaceSecPerKm) : null }
+      : null,
     focusSession: { ...e, laps: focusLaps },
     recentHistory: history,
     coachingMemory: memory,

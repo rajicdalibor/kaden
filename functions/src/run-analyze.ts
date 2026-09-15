@@ -3,11 +3,11 @@
  *   pnpm --filter @kaden/functions analyze [sessionId]
  * Default fokus = najskorija sesija. Ključ: ANTHROPIC_API_KEY iz .env (root).
  */
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
 import { AthleteProfile, type RawSession, type SessionMetrics } from "@kaden/shared-types";
-import { computeSessionMetrics } from "@kaden/metrics";
+import { computeSessionMetrics, buildGoalContext, fmtPace } from "@kaden/metrics";
 import { analyzeSession } from "./coach.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -65,9 +65,15 @@ const focusLaps = (focusRaw?.laps ?? []).map((l, i) => ({
   maxHr: l.maxHr,
 }));
 
+// Opcioni planirani intent + subjektivni check-in po sessionId (gitignored fajl).
+const intentsPath = join(repoRoot, "session-intents.local.json");
+const intents = existsSync(intentsPath)
+  ? (JSON.parse(readFileSync(intentsPath, "utf8")) as Record<string, unknown>)
+  : {};
+const focusIntent = (focusRaw && intents[focusRaw.sessionId]) ? (intents[focusRaw.sessionId] as object) : {};
+
 const today = "2026-09-15";
-const weeksToRace = Math.round(((Date.parse("2026-10-11") - Date.parse(today)) / (7 * 86400000)) * 10) / 10;
-const phase = weeksToRace <= 1 ? "race_week" : weeksToRace <= 2 ? "taper" : "build";
+const goalContext = buildGoalContext(profile, today);
 
 const context = {
   athlete: {
@@ -76,14 +82,16 @@ const context = {
     praktičnaPravila: "recovery <145, long 140-152 (idealno <150), tempo 155-169, intervali 167-176, siva zona (izbegavati na easy) 150-160",
     kadencaCilj: "164-167 spm",
   },
-  goalContext: { race: "Zagreb polumaraton", dateISO: "2026-10-11", weeksToRace, phase, cilj: "sub-2h (pace 5:41/km)" },
-  focusSession: { ...focus, laps: focusLaps },
+  goalContext: goalContext
+    ? { ...goalContext, ciljniTempo: goalContext.targetPaceSecPerKm ? fmtPace(goalContext.targetPaceSecPerKm) : null }
+    : null,
+  focusSession: { ...focus, laps: focusLaps, ...focusIntent },
   recentHistory: history,
   coachingMemory: { observations: [] as string[] },
 };
 
 console.log(`→ Fokus trening: ${focus.date}  ${focus.distKm}km  ${focus.pace}  HR ${focus.avgHr}/${focus.maxHr}`);
-console.log(`  Istorija za poređenje: ${history.length} sesija | weeksToRace=${weeksToRace} (${phase})`);
+console.log(`  Istorija: ${history.length} sesija | cilj: ${goalContext?.phase}, ${goalContext?.weeksToRace}ned, ciljni tempo ${goalContext?.targetPaceSecPerKm ? fmtPace(goalContext.targetPaceSecPerKm) : "n/a"}, reqVDOT ${goalContext?.requiredVdot}`);
 console.log("→ Zovem coacha (Sonnet)...\n");
 
 const a = await analyzeSession(context, apiKey);
