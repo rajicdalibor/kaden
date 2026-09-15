@@ -15,6 +15,10 @@ lib/
 summary.local.json
 *.local.json
 *.local.csv
+*.local.md
+
+# FIT-derived sesije (realni podaci — repo privatan, ali izvan git-a za svaki slučaj)
+fixtures-fit/
 
 # os / editor
 .DS_Store

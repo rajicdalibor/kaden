@@ -9,6 +9,8 @@
     "serve": "npm run build && firebase emulators:start --only functions",
     "deploy": "firebase deploy --only functions",
     "plan:local": "tsx src/run-plan.ts",
+    "analyze": "tsx src/run-analyze.ts",
+    "coach:replay": "tsx src/run-coach-replay.ts",
     "test": "echo 'add tests'"
   },
   "dependencies": {

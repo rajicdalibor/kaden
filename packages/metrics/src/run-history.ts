@@ -10,9 +10,11 @@ const csvPath = process.argv[2] ?? join(here, "..", "history.local.csv");
 const profile = AthleteProfile.parse({
   uid: "dev-local",
   sex: "male",
-  hrMax: Number(process.env.HRMAX ?? 188),
-  hrRest: Number(process.env.HRREST ?? 48),
-  goal: { race: "general" },
+  hrMax: Number(process.env.HRMAX ?? 191),
+  hrRest: Number(process.env.HRREST ?? 49),
+  lthr: Number(process.env.LTHR ?? 169),
+  zoneModel: "lactate",
+  goal: { race: "half_marathon", dateISO: "2026-10-11", targetTimeMin: 120 },
 });
 
 const csv = readFileSync(csvPath, "utf8");

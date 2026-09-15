@@ -7,14 +7,15 @@ import { AthleteProfile, type RawSession } from "@kaden/shared-types";
 const here = dirname(fileURLToPath(import.meta.url));
 const fixturesDir = join(here, "..", "fixtures");
 
-// PLACEHOLDER profil — zameni realnim HRmax/HRrest (vidi .claude/CLAUDE.md).
-// Prihvata override iz env-a: HRMAX / HRREST za brzo testiranje bez izmene koda.
+// Realni profil (Dalibor): Max 191, LTHR 169, rest 49, LTHR zone. Override iz env-a.
 const profile = AthleteProfile.parse({
   uid: "dev-local",
   sex: "male",
-  hrMax: Number(process.env.HRMAX ?? 180),
-  hrRest: Number(process.env.HRREST ?? 50),
-  goal: { race: "general" },
+  hrMax: Number(process.env.HRMAX ?? 191),
+  hrRest: Number(process.env.HRREST ?? 49),
+  lthr: Number(process.env.LTHR ?? 169),
+  zoneModel: "lactate",
+  goal: { race: "half_marathon", dateISO: "2026-10-11", targetTimeMin: 120 },
 });
 
 const files = readdirSync(fixturesDir).filter((f) => f.endsWith(".json"));

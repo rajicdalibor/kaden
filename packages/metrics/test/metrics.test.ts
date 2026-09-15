@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import {
   zoneOf,
+  zoneOfLthr,
   trimpBanister,
   aerobicDecoupling,
   acwr,
@@ -18,6 +19,14 @@ describe("zones", () => {
     expect(zoneOf(90, 180)).toBe(0);   // 50%
     expect(zoneOf(126, 180)).toBe(2);  // 70%
     expect(zoneOf(170, 180)).toBe(4);  // 94%
+  });
+});
+describe("zoneOfLthr", () => {
+  it("mapira HR na LTHR zone (Daliborove granice, LTHR 169)", () => {
+    expect(zoneOfLthr(110, 169)).toBe(0); // <114 → Z1
+    expect(zoneOfLthr(140, 169)).toBe(2); // 134-152 → Z3 (recovery/long)
+    expect(zoneOfLthr(160, 169)).toBe(3); // 153-169 → Z4 (tempo)
+    expect(zoneOfLthr(175, 169)).toBe(4); // >169 → Z5 (intervali)
   });
 });
 describe("trimp", () => {
