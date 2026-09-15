@@ -1,22 +1,28 @@
-# apps/mobile (Faza 2 — još ne kreće)
+# apps/mobile — Kaden (Expo)
 
-Expo (React Native) app, **development build** (ne Expo Go — health moduli su native).
+Runnable-first skelet (Faza 2). Trenutno: renderuje `SessionAnalysis` u chat-like formatu
+(offline primer). Backend je live (kaden-7b907); sledeće kačimo Firebase.
 
-## Kad kreće
-Tek pošto metrics engine i Sonnet output budu validirani na tvojim podacima (Faza 1).
+## Pokretanje
+```bash
+cd apps/mobile
+npx expo start
+```
+- **Najlakše:** instaliraj **Expo Go** na iPhone → skeniraj QR iz terminala.
+- **Simulator:** pritisni `i` (traži Xcode + iOS simulator).
 
-## Stack (planirano)
-- iOS: `@kingstinct/react-native-healthkit` (background delivery se registruje automatski)
-- Android: `react-native-health-connect` (v4, Android 14+ za Garmin sync)
-- Oba iza jednog `HealthProvider` interfejsa
-- `expo-dev-client`, config plugin za HealthKit entitlement + usage descriptions
+Vidiš: Kaden header + analiza treninga (osnovni brojevi → zone → ocena → poređenje →
+sledeći korak → pitanje) sa verdikt bedžom.
 
-## Ekrani
-1. Home/Sync — dugme + status poslednjeg sync-a
-2. Dashboard — metrike + AI plan za sledeću nedelju (ovde dolazi Claude Design)
-3. Session detail — pace/HR/zone (opciono)
+## Stack
+- Expo SDK 52, React Native 0.76, TypeScript. Metro monorepo config (`metro.config.js`).
+- Tipovi iz `@kaden/shared-types` (isti ugovori kao backend).
 
-## Bootstrap (kad budeš spreman)
-    npx create-expo-app@latest . --template
-    npx expo install expo-dev-client
-    # dodaj health biblioteke + config plugin, pa: eas build --profile development
+## Sledeći koraci (redom)
+1. **Firebase JS SDK** — Google Sign-In (`expo-auth-session`) + Firestore (čita
+   `athletes/{uid}/analyses`). Traži registrovan **Web app** u Firebase → config.
+2. **Lista analiza** (realtime) → tap → detalj (već imamo `AnalysisView`).
+3. **FIT import** — `expo-document-picker` → upload na `sync` (parser ostaje backend).
+4. **HealthKit** — `@kingstinct/react-native-healthkit` + **dev build** (ne Expo Go),
+   background delivery. Ovde treba Apple Developer (device) ili besplatni Apple ID (7d).
+5. **App Check** — migracija na React Native Firebase (native).

@@ -1,0 +1,61 @@
+name: Firebase Deploy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "functions/**"
+      - "packages/**"
+      - "firebase.json"
+      - "firestore.rules"
+      - "firestore.indexes.json"
+      - "storage.rules"
+      - ".github/workflows/firebase-deploy.yml"
+  workflow_dispatch: {}
+
+concurrency:
+  group: firebase-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Build (shared-types → metrics → functions bundle)
+        run: |
+          pnpm --filter @kaden/shared-types build
+          pnpm --filter @kaden/metrics build
+          pnpm --filter @kaden/functions build
+
+      - name: Test
+        run: pnpm --filter @kaden/metrics test
+
+      - name: Auth to Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
+      - name: Deploy (functions + rules)
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ steps.auth.outputs.credentials_file_path }}
+        run: >
+          pnpm dlx firebase-tools@14 deploy
+          --only functions,firestore,storage
+          --project kaden-7b907
+          --non-interactive
+          --force

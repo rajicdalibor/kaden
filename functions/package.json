@@ -5,7 +5,8 @@
   "main": "lib/index.js",
   "engines": { "node": "22" },
   "scripts": {
-    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit && node esbuild.config.mjs && npm --prefix deploy install --omit=dev --no-audit --no-fund",
     "serve": "npm run build && firebase emulators:start --only functions",
     "deploy": "firebase deploy --only functions",
     "plan:local": "tsx src/run-plan.ts",
@@ -17,11 +18,16 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.32.1",
-    "@kaden/metrics": "workspace:*",
-    "@kaden/shared-types": "workspace:*",
     "firebase-admin": "^13.0.1",
     "firebase-functions": "^6.1.1",
     "zod": "^3.23.8"
   },
-  "devDependencies": { "typescript": "^5.6.3", "tsx": "^4.19.2", "@types/node": "^22.0.0" }
+  "devDependencies": {
+    "@kaden/metrics": "workspace:*",
+    "@kaden/shared-types": "workspace:*",
+    "@types/node": "^22.0.0",
+    "esbuild": "^0.24.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3"
+  }
 }

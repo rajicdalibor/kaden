@@ -27,3 +27,4 @@ fixtures-fit/
 # firebase emulator secrets
 .secret.local
 functions/.secret.local
+functions/deploy/
