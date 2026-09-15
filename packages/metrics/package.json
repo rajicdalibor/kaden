@@ -2,22 +2,20 @@
   "name": "@kaden/metrics",
   "version": "0.0.0",
   "type": "module",
-  "main": "src/index.ts",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": { ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" } },
+  "files": ["dist"],
   "scripts": {
-    "build": "tsc --noEmit",
+    "build": "tsc",
     "test": "vitest run",
     "demo": "tsx src/run-fixtures.ts",
     "history": "tsx src/run-history.ts",
     "fit": "tsx src/run-fit.ts"
   },
   "dependencies": {
-    "@kaden/shared-types": "workspace:*"
+    "@kaden/shared-types": "workspace:*",
+    "fit-file-parser": "^5.0.2"
   },
-  "devDependencies": {
-    "@types/node": "^22.0.0",
-    "fit-file-parser": "^5.0.2",
-    "tsx": "^4.19.2",
-    "typescript": "^5.6.3",
-    "vitest": "^2.1.8"
-  }
+  "devDependencies": { "tsx": "^4.19.2", "vitest": "^2.1.8", "typescript": "^5.6.3", "@types/node": "^22.0.0" }
 }

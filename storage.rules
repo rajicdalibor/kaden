@@ -1,0 +1,11 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    // hrStream + laps po sesiji (veliki podaci — NE u Firestore doc).
+    // Čita samo vlasnik; piše backend (admin SDK zaobilazi pravila).
+    match /athletes/{uid}/streams/{sessionId} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow write: if false;
+    }
+  }
+}

@@ -1,0 +1,38 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Personal edition: samo autentifikovan korisnik sme da čita/piše SVOJE podatke.
+    // Cloud Functions (admin SDK) zaobilaze pravila — sync/weeklyAnalysis pišu slobodno.
+
+    function isOwner(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+    // Allowlist gate (personal edition): dokument allowlist/{uid} mora postojati.
+    function isAllowed(uid) {
+      return exists(/databases/$(database)/documents/allowlist/$(uid));
+    }
+
+    match /allowlist/{uid} {
+      allow read: if isOwner(uid);
+      allow write: if false; // menja se samo iz konzole / admin-a
+    }
+
+    match /athletes/{uid} {
+      allow read: if isOwner(uid) && isAllowed(uid);
+      // profil sme da menja vlasnik; sve ostalo (metrике, analize) piše backend
+      allow write: if isOwner(uid) && isAllowed(uid);
+
+      match /{sub=**} {
+        // sesije/analize/planovi/memorija/checkins — čita vlasnik.
+        // Pisanje ide kroz backend (admin) osim checkins koje korisnik unosi.
+        allow read: if isOwner(uid) && isAllowed(uid);
+        allow write: if false;
+      }
+
+      // Korisnik sme sam da upiše subjektivni check-in.
+      match /checkins/{weekId} {
+        allow read, write: if isOwner(uid) && isAllowed(uid);
+      }
+    }
+  }
+}

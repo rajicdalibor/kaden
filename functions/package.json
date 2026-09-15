@@ -11,6 +11,8 @@
     "plan:local": "tsx src/run-plan.ts",
     "analyze": "tsx src/run-analyze.ts",
     "coach:replay": "tsx src/run-coach-replay.ts",
+    "seed": "tsx scripts/seed.ts",
+    "smoke": "tsx scripts/emulator-smoke.ts",
     "test": "echo 'add tests'"
   },
   "dependencies": {

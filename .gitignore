@@ -23,3 +23,7 @@ fixtures-fit/
 # os / editor
 .DS_Store
 *.log
+
+# firebase emulator secrets
+.secret.local
+functions/.secret.local
