@@ -13,6 +13,7 @@
     "analyze": "tsx src/run-analyze.ts",
     "coach:replay": "tsx src/run-coach-replay.ts",
     "seed": "tsx scripts/seed.ts",
+    "push": "tsx scripts/push-session.ts",
     "smoke": "tsx scripts/emulator-smoke.ts",
     "test": "echo 'add tests'"
   },

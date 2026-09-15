@@ -25,8 +25,10 @@ export async function generatePlan(
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     const res = await client.messages.create({
       model: MODEL,
-      max_tokens: 4096,
+      max_tokens: 8192,
       system: SYSTEM,
+      // strukturiran izlaz — thinking nije potreban i trošio bi max_tokens (→ truncation)
+      ...({ thinking: { type: "disabled" } } as any),
       tools: [{
         name: "training_plan",
         description: "Vrati procenu i plan za sledeću nedelju.",

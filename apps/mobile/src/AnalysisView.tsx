@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { View, Text, StyleSheet } from "react-native";
 import type { SessionAnalysis } from "@kaden/shared-types";
 
@@ -8,7 +9,7 @@ const VERDICT: Record<SessionAnalysis["verdict"], { label: string; color: string
   back_off: { label: "USPORI", color: "#dc2626" },
 };
 
-function Section({ icon, title, children }: { icon: string; title: string; children: React.ReactNode }) {
+function Section({ icon, title, children }: { icon: string; title: string; children: ReactNode }) {
   return (
     <View style={styles.section}>
       <Text style={styles.sectionTitle}>{icon}  {title}</Text>

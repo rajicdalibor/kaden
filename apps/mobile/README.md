@@ -15,7 +15,7 @@ Vidiš: Kaden header + analiza treninga (osnovni brojevi → zone → ocena → 
 sledeći korak → pitanje) sa verdikt bedžom.
 
 ## Stack
-- Expo SDK 52, React Native 0.76, TypeScript. Metro monorepo config (`metro.config.js`).
+- Expo SDK 57, React 19, React Native 0.86, TypeScript. Metro monorepo config (`metro.config.js`).
 - Tipovi iz `@kaden/shared-types` (isti ugovori kao backend).
 
 ## Sledeći koraci (redom)
