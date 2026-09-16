@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { SafeAreaView, ScrollView, Text, View, Pressable, TextInput, StyleSheet } from "react-native";
+import { SafeAreaView, ScrollView, Text, View, Pressable, TextInput, Alert, StyleSheet } from "react-native";
 import { StatusBar } from "expo-status-bar";
 import {
   onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword,
@@ -10,7 +10,7 @@ import * as FileSystem from "expo-file-system/legacy";
 import type { SessionAnalysis } from "@kaden/shared-types";
 import { auth, db } from "./src/firebase";
 import { SYNC_FIT_URL, SYNC_URL } from "./src/config";
-import { ensureHealthPermission, latestRunAsRawSession } from "./src/health";
+import { ensureHealthPermission, allRunsAsRawSessions, healthDiagnostics } from "./src/health";
 import { AnalysisView } from "./src/AnalysisView";
 import { sampleAnalysis } from "./src/sample";
 
@@ -79,22 +79,39 @@ export default function App() {
   async function syncHealth() {
     try {
       setImporting("Health dozvola…");
-      if (!(await ensureHealthPermission())) { setImporting(null); setError("HealthKit nedostupan"); return; }
-      setImporting("Čitam poslednje trčanje…");
-      const raw = await latestRunAsRawSession();
-      if (!raw) { setImporting(null); setError("Nema trčanja u Apple Health-u"); return; }
-      setImporting("Šaljem na backend…");
+      if (!(await ensureHealthPermission())) {
+        setImporting(null); Alert.alert("HealthKit", "Nedostupan na ovom uređaju."); return;
+      }
+      setImporting("Čitam Health…");
+      const runs = await allRunsAsRawSessions();
+      if (runs.length === 0) {
+        const d = await healthDiagnostics();
+        setImporting(null);
+        Alert.alert(
+          "Nema trčanja",
+          `Health vidi: ${d.total} workouts, ${d.running} trčanja.\n\n` +
+          (d.total === 0
+            ? "Ili nije data dozvola (Settings → Privacy → Health → Kaden), ili Garmin ne upisuje u Apple Health."
+            : "Ima workouts ali nijedno nije prepoznato kao trčanje."),
+        );
+        return;
+      }
       const token = await auth.currentUser?.getIdToken();
-      const res = await fetch(SYNC_URL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify(raw),
-      });
-      const j = await res.json();
-      if (!res.ok) { setImporting(null); setError(`Health: ${j.error ?? res.status}`); return; }
-      setImporting("Analiza se generiše…");
-      setTimeout(() => setImporting(null), 8000);
-    } catch (e: any) { setImporting(null); setError(`Health: ${e.message ?? e}`); }
+      let ok = 0;
+      for (let i = 0; i < runs.length; i++) {
+        setImporting(`Šaljem ${i + 1}/${runs.length}…`);
+        try {
+          const res = await fetch(SYNC_URL, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            body: JSON.stringify(runs[i]),
+          });
+          if (res.ok) ok++;
+        } catch { /* preskoči neuspeli */ }
+      }
+      setImporting(null);
+      Alert.alert("✓ Sync gotov", `${ok}/${runs.length} trčanja poslato.\nAnalize za skorašnja stižu; starija ulaze u istoriju.`);
+    } catch (e: any) { setImporting(null); Alert.alert("Health greška", String(e?.message ?? e)); }
   }
 
   // --- Sign-in screen ---

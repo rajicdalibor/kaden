@@ -57,7 +57,7 @@ async function storeSession(uid: string, raw: RawSession, profile: AthleteProfil
 
 /** POST /sync — telefon šalje gotovu RawSession (iz HealthKit). */
 export const sync = onRequest(
-  { region: REGION, cors: true },
+  { region: REGION, cors: true, invoker: "public" },
   async (req, res) => {
     try {
       const ap = await authAndProfile(req, res);
@@ -74,7 +74,7 @@ export const sync = onRequest(
 
 /** POST /syncFit — telefon šalje SIROV FIT (base64); parsiranje na serveru (isti tested parser). */
 export const syncFit = onRequest(
-  { region: REGION, cors: true, memory: "512MiB" },
+  { region: REGION, cors: true, memory: "512MiB", invoker: "public" },
   async (req, res) => {
     try {
       const ap = await authAndProfile(req, res);
@@ -103,6 +103,17 @@ export const onSessionCreated = onDocumentCreated(
     const { uid } = event.params;
     const doc = event.data?.data();
     if (!doc) return;
+
+    // Backfill istorije: stare sesije ulaze kao kontekst (metrике), ali NE trošimo
+    // LLM na analizu run-a od pre više nedelja — samo skorašnja dobijaju coach analizu.
+    const ANALYZE_MAX_AGE_DAYS = 14;
+    const sDate: string = doc.metrics?.date ?? String(doc.startTime ?? "").slice(0, 10);
+    const ageDays = (Date.now() - Date.parse(`${sDate}T00:00:00Z`)) / 86400000;
+    if (Number.isFinite(ageDays) && ageDays > ANALYZE_MAX_AGE_DAYS) {
+      console.log(`onSessionCreated: preskačem analizu za staru sesiju ${sDate} (${Math.round(ageDays)}d)`);
+      return;
+    }
+
     try {
       const profile = AthleteProfile.parse((await db.doc(`athletes/${uid}`).get()).data());
 

@@ -6,6 +6,18 @@ import {
 } from "@kingstinct/react-native-healthkit";
 import type { RawSession } from "@kaden/shared-types";
 
+/** Dijagnostika: koliko workouts / trčanja Health vidi (za debug). */
+export async function healthDiagnostics(): Promise<{ available: boolean; total: number; running: number }> {
+  const available = isHealthDataAvailable();
+  let total = 0, running = 0;
+  try {
+    const w = await queryWorkoutSamples({ limit: 50 });
+    total = w.length;
+    running = w.filter((x) => isRunning(x.workoutActivityType)).length;
+  } catch { /* nema pristupa */ }
+  return { available, total, running };
+}
+
 /** Traži read dozvolu za trčanja + puls + distancu. */
 export async function ensureHealthPermission(): Promise<boolean> {
   if (!isHealthDataAvailable()) return false;
@@ -24,18 +36,8 @@ function isRunning(t: unknown): boolean {
   return t === 37 || String(t).toLowerCase().includes("run");
 }
 
-/**
- * Najskorije trčanje iz Apple Health → RawSession (za /sync).
- * HealthKit daje HR uzorke + distancu/trajanje (dovoljno za zone/TRIMP/decoupling);
- * per-lap i Garmin-native polja ne postoje ovde (to je FIT).
- */
-export async function latestRunAsRawSession(): Promise<RawSession | null> {
-  const workouts = await queryWorkoutSamples({ limit: 20 });
-  const run = workouts
-    .filter((w) => isRunning(w.workoutActivityType))
-    .sort((a, b) => +new Date(b.startDate) - +new Date(a.startDate))[0];
-  if (!run) return null;
-
+/** Jedan HealthKit workout → RawSession (HR uzorci u okviru treninga). */
+async function workoutToRawSession(run: any): Promise<RawSession> {
   const start = new Date(run.startDate);
   const end = new Date(run.endDate);
   const durationSec = (+end - +start) / 1000;
@@ -76,4 +78,24 @@ export async function latestRunAsRawSession(): Promise<RawSession | null> {
     laps: [],
     hrStream,
   };
+}
+
+function runningWorkouts(workouts: readonly any[]): any[] {
+  return workouts
+    .filter((w) => isRunning(w.workoutActivityType))
+    .sort((a, b) => +new Date(b.startDate) - +new Date(a.startDate));
+}
+
+/** Najskorije trčanje iz Apple Health → RawSession. */
+export async function latestRunAsRawSession(): Promise<RawSession | null> {
+  const run = runningWorkouts(await queryWorkoutSamples({ limit: 30 }))[0];
+  return run ? workoutToRawSession(run) : null;
+}
+
+/** SVA trčanja iz Apple Health → RawSession[] (za backfill istorije). */
+export async function allRunsAsRawSessions(maxRuns = 200): Promise<RawSession[]> {
+  const runs = runningWorkouts(await queryWorkoutSamples({ limit: -1 })).slice(0, maxRuns);
+  const out: RawSession[] = [];
+  for (const r of runs) out.push(await workoutToRawSession(r));
+  return out;
 }
