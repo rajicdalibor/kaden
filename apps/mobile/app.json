@@ -13,6 +13,16 @@
     },
     "android": {
       "package": "com.dalibor.kaden"
-    }
+    },
+    "plugins": [
+      "expo-dev-client",
+      [
+        "@kingstinct/react-native-healthkit",
+        {
+          "NSHealthShareUsageDescription": "Kaden čita tvoja trčanja i puls iz Apple Health radi analize treninga.",
+          "background": true
+        }
+      ]
+    ]
   }
 }

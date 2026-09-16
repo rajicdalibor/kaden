@@ -28,3 +28,8 @@ fixtures-fit/
 .secret.local
 functions/.secret.local
 functions/deploy/
+
+# expo prebuild (generisano — CNG workflow)
+apps/mobile/ios/
+apps/mobile/android/
+apps/mobile/.expo/

@@ -10,7 +10,7 @@ import {
   RawSession, AthleteProfile, CoachingMemory, type SessionMetrics,
 } from "@kaden/shared-types";
 import {
-  computeSessionMetrics, buildSummaryFromMetrics, buildGoalContext, isoWeek,
+  computeSessionMetrics, buildSummaryFromMetrics, buildGoalContext, isoWeek, parseFitBuffer,
 } from "@kaden/metrics";
 import { generatePlan } from "./sonnet.js";
 import { analyzeSession } from "./coach.js";
@@ -24,46 +24,73 @@ const MEMORY_CAP = 20;
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
 
-/** POST /sync — telefon šalje jednu RawSession (iz HealthKit/FIT). */
+/** Verifikuj Auth token + allowlist, vrati {uid, profile} ili pošalji error i vrati null. */
+async function authAndProfile(req: any, res: any): Promise<{ uid: string; profile: AthleteProfile } | null> {
+  const authz = req.header("Authorization") ?? "";
+  const idToken = authz.startsWith("Bearer ") ? authz.slice(7) : "";
+  if (!idToken) { res.status(401).json({ error: "missing_auth" }); return null; }
+  const uid = (await getAuth().verifyIdToken(idToken)).uid;
+  if (!(await db.doc(`allowlist/${uid}`).get()).exists) {
+    res.status(403).json({ error: "not_allowlisted" }); return null;
+  }
+  const profSnap = await db.doc(`athletes/${uid}`).get();
+  if (!profSnap.exists) { res.status(400).json({ error: "no_profile" }); return null; }
+  return { uid, profile: AthleteProfile.parse(profSnap.data()) };
+}
+
+/** Metrике (determinístički) + hrStream u Storage + session doc (→ okida onSessionCreated). */
+async function storeSession(uid: string, raw: RawSession, profile: AthleteProfile): Promise<SessionMetrics> {
+  const metrics = computeSessionMetrics(raw, profile);
+  try {
+    await getStorage().bucket()
+      .file(`athletes/${uid}/streams/${raw.sessionId}.json`)
+      .save(JSON.stringify({ hrStream: raw.hrStream }), { contentType: "application/json" });
+  } catch (e) {
+    console.warn(`stream upload failed (${uid}/${raw.sessionId}) — nastavljam`, e);
+  }
+  const { hrStream, ...rest } = raw; // hrStream u Storage; laps ostaju u doc-u (mali)
+  void hrStream;
+  await db.doc(`athletes/${uid}/sessions/${raw.sessionId}`)
+    .set({ ...rest, metrics, createdAt: FieldValue.serverTimestamp() });
+  return metrics;
+}
+
+/** POST /sync — telefon šalje gotovu RawSession (iz HealthKit). */
 export const sync = onRequest(
   { region: REGION, cors: true },
   async (req, res) => {
     try {
-      // 1) Auth (Firebase ID token). TODO: App Check enforce (X-Firebase-AppCheck).
-      const authz = req.header("Authorization") ?? "";
-      const idToken = authz.startsWith("Bearer ") ? authz.slice(7) : "";
-      if (!idToken) { res.status(401).json({ error: "missing_auth" }); return; }
-      const uid = (await getAuth().verifyIdToken(idToken)).uid;
-
-      // 2) Allowlist gate (personal edition).
-      if (!(await db.doc(`allowlist/${uid}`).get()).exists) {
-        res.status(403).json({ error: "not_allowlisted" }); return;
-      }
-
-      // 3) Validacija + profil.
+      const ap = await authAndProfile(req, res);
+      if (!ap) return;
       const raw = RawSession.parse(req.body);
-      const profSnap = await db.doc(`athletes/${uid}`).get();
-      if (!profSnap.exists) { res.status(400).json({ error: "no_profile" }); return; }
-      const profile = AthleteProfile.parse(profSnap.data());
-
-      // 4) Metrике (determinístički) + čuvanje.
-      const metrics = computeSessionMetrics(raw, profile);
-      try {
-        await getStorage().bucket()
-          .file(`athletes/${uid}/streams/${raw.sessionId}.json`)
-          .save(JSON.stringify({ hrStream: raw.hrStream }), { contentType: "application/json" });
-      } catch (e) {
-        console.warn(`stream upload failed (${uid}/${raw.sessionId}) — nastavljam`, e);
-      }
-
-      const { hrStream, ...rest } = raw; // hrStream u Storage; laps ostaju u doc-u (mali)
-      void hrStream;
-      await db.doc(`athletes/${uid}/sessions/${raw.sessionId}`)
-        .set({ ...rest, metrics, createdAt: FieldValue.serverTimestamp() });
-
+      const metrics = await storeSession(ap.uid, raw, ap.profile);
       res.status(200).json({ ok: true, sessionId: raw.sessionId, metrics });
     } catch (e) {
       console.error("sync failed", e);
+      res.status(400).json({ error: String(e) });
+    }
+  },
+);
+
+/** POST /syncFit — telefon šalje SIROV FIT (base64); parsiranje na serveru (isti tested parser). */
+export const syncFit = onRequest(
+  { region: REGION, cors: true, memory: "512MiB" },
+  async (req, res) => {
+    try {
+      const ap = await authAndProfile(req, res);
+      if (!ap) return;
+      const b64 = req.body?.fitBase64;
+      if (typeof b64 !== "string" || b64.length === 0) {
+        res.status(400).json({ error: "missing_fitBase64" }); return;
+      }
+      const buf = Buffer.from(b64, "base64");
+      const raw = await parseFitBuffer(buf, "tmp");
+      // stabilan id iz start_time-a (npr. 20260914061931)
+      raw.sessionId = raw.startTime.replace(/[^0-9]/g, "").slice(0, 14) || String(Date.now());
+      const metrics = await storeSession(ap.uid, raw, ap.profile);
+      res.status(200).json({ ok: true, sessionId: raw.sessionId, metrics });
+    } catch (e) {
+      console.error("syncFit failed", e);
       res.status(400).json({ error: String(e) });
     }
   },

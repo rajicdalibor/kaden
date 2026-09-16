@@ -1,10 +1,16 @@
 import { useEffect, useState } from "react";
-import { SafeAreaView, ScrollView, Text, View, Pressable, StyleSheet } from "react-native";
+import { SafeAreaView, ScrollView, Text, View, Pressable, TextInput, StyleSheet } from "react-native";
 import { StatusBar } from "expo-status-bar";
-import { onAuthStateChanged, signInAnonymously } from "firebase/auth";
+import {
+  onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword,
+} from "firebase/auth";
 import { collection, onSnapshot, query, orderBy } from "firebase/firestore";
+import * as DocumentPicker from "expo-document-picker";
+import * as FileSystem from "expo-file-system/legacy";
 import type { SessionAnalysis } from "@kaden/shared-types";
 import { auth, db } from "./src/firebase";
+import { SYNC_FIT_URL, SYNC_URL } from "./src/config";
+import { ensureHealthPermission, latestRunAsRawSession } from "./src/health";
 import { AnalysisView } from "./src/AnalysisView";
 import { sampleAnalysis } from "./src/sample";
 
@@ -14,20 +20,22 @@ const VERDICT_COLOR: Record<string, string> = {
 
 export default function App() {
   const [uid, setUid] = useState<string | null>(null);
+  const [ready, setReady] = useState(false);
   const [analyses, setAnalyses] = useState<SessionAnalysis[]>([]);
   const [selected, setSelected] = useState<SessionAnalysis | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [importing, setImporting] = useState<string | null>(null);
+
+  // auth form
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [authErr, setAuthErr] = useState<string | null>(null);
+  const [authBusy, setAuthBusy] = useState(false);
+
+  useEffect(() => onAuthStateChanged(auth, (u) => { setUid(u?.uid ?? null); setReady(true); }), []);
 
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (user) => {
-      if (user) setUid(user.uid);
-      else signInAnonymously(auth).catch((e) => setError(`Prijava: ${e.message}`));
-    });
-    return unsub;
-  }, []);
-
-  useEffect(() => {
-    if (!uid) return;
+    if (!uid) { setAnalyses([]); return; }
     const q = query(collection(db, `athletes/${uid}/analyses`), orderBy("date", "desc"));
     return onSnapshot(
       q,
@@ -36,6 +44,82 @@ export default function App() {
     );
   }, [uid]);
 
+  async function signIn() {
+    setAuthErr(null); setAuthBusy(true);
+    try {
+      await signInWithEmailAndPassword(auth, email.trim(), password);
+    } catch (e: any) {
+      if (["auth/user-not-found", "auth/invalid-credential"].includes(e.code)) {
+        try { await createUserWithEmailAndPassword(auth, email.trim(), password); }
+        catch (e2: any) { setAuthErr(e2.message); }
+      } else setAuthErr(e.message);
+    } finally { setAuthBusy(false); }
+  }
+
+  async function importFit() {
+    try {
+      const picked = await DocumentPicker.getDocumentAsync({ type: "*/*", copyToCacheDirectory: true });
+      if (picked.canceled || !picked.assets?.[0]) return;
+      setImporting("Učitavam FIT…");
+      const b64 = await FileSystem.readAsStringAsync(picked.assets[0].uri, { encoding: FileSystem.EncodingType.Base64 });
+      setImporting("Šaljem na backend…");
+      const token = await auth.currentUser?.getIdToken();
+      const res = await fetch(SYNC_FIT_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ fitBase64: b64 }),
+      });
+      const j = await res.json();
+      if (!res.ok) { setImporting(null); setError(`Import: ${j.error ?? res.status}`); return; }
+      setImporting("Analiza se generiše…");
+      setTimeout(() => setImporting(null), 8000);
+    } catch (e: any) { setImporting(null); setError(`Import: ${e.message ?? e}`); }
+  }
+
+  async function syncHealth() {
+    try {
+      setImporting("Health dozvola…");
+      if (!(await ensureHealthPermission())) { setImporting(null); setError("HealthKit nedostupan"); return; }
+      setImporting("Čitam poslednje trčanje…");
+      const raw = await latestRunAsRawSession();
+      if (!raw) { setImporting(null); setError("Nema trčanja u Apple Health-u"); return; }
+      setImporting("Šaljem na backend…");
+      const token = await auth.currentUser?.getIdToken();
+      const res = await fetch(SYNC_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify(raw),
+      });
+      const j = await res.json();
+      if (!res.ok) { setImporting(null); setError(`Health: ${j.error ?? res.status}`); return; }
+      setImporting("Analiza se generiše…");
+      setTimeout(() => setImporting(null), 8000);
+    } catch (e: any) { setImporting(null); setError(`Health: ${e.message ?? e}`); }
+  }
+
+  // --- Sign-in screen ---
+  if (ready && !uid) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <StatusBar style="dark" />
+        <View style={styles.authWrap}>
+          <Text style={styles.logo}>Kaden</Text>
+          <Text style={styles.tagline}>Prijava</Text>
+          <TextInput style={styles.input} placeholder="email" autoCapitalize="none"
+            keyboardType="email-address" value={email} onChangeText={setEmail} />
+          <TextInput style={styles.input} placeholder="lozinka" secureTextEntry
+            value={password} onChangeText={setPassword} />
+          {authErr && <Text style={styles.authErr}>{authErr}</Text>}
+          <Pressable onPress={signIn} disabled={authBusy} style={styles.importBtn}>
+            <Text style={styles.importText}>{authBusy ? "…" : "Prijava / Registracija"}</Text>
+          </Pressable>
+          <Text style={styles.hint}>Novi email → automatski se pravi nalog.</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // --- Analysis detail ---
   if (selected) {
     return (
       <SafeAreaView style={styles.safe}>
@@ -62,11 +146,16 @@ export default function App() {
           <Text style={styles.tagline}>AI trener trčanja</Text>
         </View>
 
+        <Pressable onPress={syncHealth} disabled={!!importing} style={styles.importBtn}>
+          <Text style={styles.importText}>{importing ?? "⌚  Sync iz Apple Health"}</Text>
+        </Pressable>
+        <Pressable onPress={importFit} disabled={!!importing} style={styles.importBtnAlt}>
+          <Text style={styles.importTextAlt}>＋  Uvezi FIT (pun detalj)</Text>
+        </Pressable>
+
         {isDemo && (
           <View style={styles.notice}>
-            <Text style={styles.noticeTitle}>
-              {error ?? "Još nema analiza — prikazan je primer."}
-            </Text>
+            <Text style={styles.noticeTitle}>{error ?? "Još nema analiza — prikazan je primer."}</Text>
             <Text style={styles.noticeUid}>uid: {uid ?? "…"}</Text>
           </View>
         )}
@@ -91,6 +180,14 @@ const styles = StyleSheet.create({
   brand: { paddingVertical: 8, paddingHorizontal: 4 },
   logo: { fontSize: 32, fontWeight: "900", color: "#0f172a", letterSpacing: -0.5 },
   tagline: { fontSize: 15, color: "#64748b", marginTop: 2 },
+  authWrap: { flex: 1, justifyContent: "center", padding: 24, gap: 12 },
+  input: { backgroundColor: "#fff", borderRadius: 12, padding: 14, fontSize: 16, borderWidth: 1, borderColor: "#e2e8f0" },
+  authErr: { color: "#dc2626", fontSize: 13 },
+  hint: { fontSize: 12, color: "#94a3b8", textAlign: "center" },
+  importBtn: { backgroundColor: "#2563eb", borderRadius: 12, paddingVertical: 14, alignItems: "center" },
+  importText: { color: "#fff", fontWeight: "700", fontSize: 15 },
+  importBtnAlt: { backgroundColor: "#fff", borderRadius: 12, paddingVertical: 12, alignItems: "center", borderWidth: 1, borderColor: "#cbd5e1" },
+  importTextAlt: { color: "#475569", fontWeight: "600", fontSize: 14 },
   notice: { backgroundColor: "#fef9c3", borderRadius: 12, padding: 12, gap: 4 },
   noticeTitle: { fontSize: 13, color: "#854d0e", fontWeight: "600" },
   noticeUid: { fontSize: 12, color: "#a16207", fontFamily: "Courier" },
