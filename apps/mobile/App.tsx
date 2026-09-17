@@ -7,24 +7,21 @@ import {
 import { collection, onSnapshot, query, orderBy } from "firebase/firestore";
 import * as DocumentPicker from "expo-document-picker";
 import * as FileSystem from "expo-file-system/legacy";
-import type { SessionAnalysis } from "@kaden/shared-types";
 import { auth, db } from "./src/firebase";
 import { SYNC_FIT_URL, SYNC_URL } from "./src/config";
 import { ensureHealthPermission, allRunsAsRawSessions, healthDiagnostics } from "./src/health";
-import { AnalysisView } from "./src/AnalysisView";
+import { AnalysisView, type Analysis } from "./src/AnalysisView";
+import { ChatScreen } from "./src/ChatScreen";
 import { sampleAnalysis } from "./src/sample";
-
-const VERDICT_COLOR: Record<string, string> = {
-  excellent: "#16a34a", on_track: "#2563eb", watch: "#d97706", back_off: "#dc2626",
-};
 
 export default function App() {
   const [uid, setUid] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
-  const [analyses, setAnalyses] = useState<SessionAnalysis[]>([]);
-  const [selected, setSelected] = useState<SessionAnalysis | null>(null);
+  const [analyses, setAnalyses] = useState<Analysis[]>([]);
+  const [selected, setSelected] = useState<Analysis | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [importing, setImporting] = useState<string | null>(null);
+  const [chatOpen, setChatOpen] = useState(false);
 
   // auth form
   const [email, setEmail] = useState("");
@@ -39,7 +36,7 @@ export default function App() {
     const q = query(collection(db, `athletes/${uid}/analyses`), orderBy("date", "desc"));
     return onSnapshot(
       q,
-      (snap) => { setAnalyses(snap.docs.map((d) => d.data() as SessionAnalysis)); setError(null); },
+      (snap) => { setAnalyses(snap.docs.map((d) => ({ sessionId: d.id, ...(d.data() as any) }) as Analysis)); setError(null); },
       (e) => setError(e.message.includes("permission") ? "uid nije u allowlist-u (seed potreban)" : e.message),
     );
   }, [uid]);
@@ -136,6 +133,16 @@ export default function App() {
     );
   }
 
+  // --- Chat sa coachem ---
+  if (chatOpen) {
+    return (
+      <SafeAreaView style={styles.safe}>
+        <StatusBar style="dark" />
+        <ChatScreen onClose={() => setChatOpen(false)} />
+      </SafeAreaView>
+    );
+  }
+
   // --- Analysis detail ---
   if (selected) {
     return (
@@ -163,8 +170,11 @@ export default function App() {
           <Text style={styles.tagline}>AI trener trčanja</Text>
         </View>
 
-        <Pressable onPress={syncHealth} disabled={!!importing} style={styles.importBtn}>
-          <Text style={styles.importText}>{importing ?? "⌚  Sync iz Apple Health"}</Text>
+        <Pressable onPress={() => setChatOpen(true)} style={styles.chatBtn}>
+          <Text style={styles.chatText}>💬  Razgovor sa coachem</Text>
+        </Pressable>
+        <Pressable onPress={syncHealth} disabled={!!importing} style={styles.importBtnAlt}>
+          <Text style={styles.importTextAlt}>{importing ?? "⌚  Sync iz Apple Health"}</Text>
         </Pressable>
         <Pressable onPress={importFit} disabled={!!importing} style={styles.importBtnAlt}>
           <Text style={styles.importTextAlt}>＋  Uvezi FIT (pun detalj)</Text>
@@ -183,7 +193,7 @@ export default function App() {
               <Text style={styles.itemDate}>{a.date}</Text>
               <Text style={styles.itemType}>{a.classification}</Text>
             </View>
-            <View style={[styles.dot, { backgroundColor: VERDICT_COLOR[a.verdict] ?? "#64748b" }]} />
+            <Text style={styles.chev}>›</Text>
           </Pressable>
         ))}
       </ScrollView>
@@ -203,6 +213,8 @@ const styles = StyleSheet.create({
   hint: { fontSize: 12, color: "#94a3b8", textAlign: "center" },
   importBtn: { backgroundColor: "#2563eb", borderRadius: 12, paddingVertical: 14, alignItems: "center" },
   importText: { color: "#fff", fontWeight: "700", fontSize: 15 },
+  chatBtn: { backgroundColor: "#0f172a", borderRadius: 12, paddingVertical: 16, alignItems: "center" },
+  chatText: { color: "#fff", fontWeight: "800", fontSize: 16 },
   importBtnAlt: { backgroundColor: "#fff", borderRadius: 12, paddingVertical: 12, alignItems: "center", borderWidth: 1, borderColor: "#cbd5e1" },
   importTextAlt: { color: "#475569", fontWeight: "600", fontSize: 14 },
   notice: { backgroundColor: "#fef9c3", borderRadius: 12, padding: 12, gap: 4 },
@@ -213,7 +225,7 @@ const styles = StyleSheet.create({
     shadowColor: "#000", shadowOpacity: 0.05, shadowRadius: 8, shadowOffset: { width: 0, height: 2 }, elevation: 1 },
   itemDate: { fontSize: 15, fontWeight: "700", color: "#0f172a" },
   itemType: { fontSize: 13, color: "#64748b", marginTop: 2 },
-  dot: { width: 14, height: 14, borderRadius: 7 },
+  chev: { fontSize: 24, color: "#cbd5e1", fontWeight: "700" },
   back: { paddingVertical: 4 },
   backText: { fontSize: 16, color: "#2563eb", fontWeight: "600" },
 });

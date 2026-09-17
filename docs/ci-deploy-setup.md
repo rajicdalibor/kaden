@@ -12,11 +12,18 @@ gcloud config set project kaden-7b907
 gcloud iam service-accounts create kaden-ci \
   --display-name="Kaden GitHub CI deploy"
 
-SA="kaden-ci@kaden-7b907.iam.gserviceaccount.com"
+# NAPOMENA: koristi TAČNO ime SA koje si kreirao (npr. ci-account@…), ne primer.
+SA="ci-account@kaden-7b907.iam.gserviceaccount.com"
 
-# Prava (jednostavna varijanta — Editor pokriva većinu + eksplicitni Firebase/secret/SA-user):
-for R in roles/editor roles/firebase.admin roles/iam.serviceAccountUser roles/secretmanager.admin; do
+# Projektne role (Editor pokriva većinu; serviceUsageAdmin za enable API-ja):
+for R in roles/editor roles/firebase.admin roles/serviceusage.serviceUsageAdmin roles/secretmanager.admin roles/iam.serviceAccountUser; do
   gcloud projects add-iam-policy-binding kaden-7b907 --member="serviceAccount:$SA" --role="$R"
+done
+
+# actAs na runtime SA-ovima (2nd-gen functions ih koriste — bez ovoga deploy puca):
+for RT in kaden-7b907@appspot.gserviceaccount.com 933464988742-compute@developer.gserviceaccount.com; do
+  gcloud iam service-accounts add-iam-policy-binding "$RT" \
+    --member="serviceAccount:$SA" --role="roles/iam.serviceAccountUser" --project kaden-7b907
 done
 
 # Ključ (JSON) — sadržaj ide u GitHub secret, fajl posle obriši:

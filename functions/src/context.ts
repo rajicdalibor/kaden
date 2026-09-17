@@ -60,6 +60,35 @@ export function lapsFromDoc(doc: any) {
   }));
 }
 
+/** Rekonstruiši "Garmin dump" iz session doc-a (laps, zone, HR, native) — ulaz za coacha. */
+export function sessionToDumpText(doc: any, profile: AthleteProfile): string {
+  const m = doc.metrics;
+  const lthr = profile.lthr ?? 169;
+  const b = LTHR_ZONE_BOUNDS.map((f) => Math.round(f * lthr));
+  const zoneRanges = [`Z1<${b[0]}`, `Z2 ${b[0]}-${b[1]}`, `Z3 ${b[1]}-${b[2]}`, `Z4 ${b[2]}-${b[3]}`, `Z5>${b[3]}`];
+  const zoneLine = m.zonePct.map((p: number, z: number) => `${zoneRanges[z]}: ${p}%`).join(", ");
+  const cadence = doc.avgRunCadence != null ? doc.avgRunCadence * 2 : null;
+  const laps = (doc.laps ?? [])
+    .map((l: any, i: number) =>
+      l.distanceM > 0 && l.durationSec > 0
+        ? `km${i + 1} ${paceStr(l.durationSec / 60, l.distanceM / 1000)}${l.avgHr ? ` @HR${l.avgHr}` : ""}`
+        : null)
+    .filter(Boolean)
+    .join(", ");
+
+  const parts = [
+    `Trening ${m.date}: ${m.distKm} km / ${m.durMin} min / avg ${paceStr(m.durMin, m.distKm)} / avg HR ${m.avgHr}${doc.maxHr ? ` (max ${doc.maxHr})` : ""}.`,
+    `TRIMP ${m.trimp}. Zone po LTHR ${lthr}: ${zoneLine}.`,
+    doc.deviceTrainingEffect != null ? `Garmin TE ${doc.deviceTrainingEffect} (anaerobni ${doc.deviceAnaerobicTE ?? 0}).` : "",
+    doc.deviceTrainingLoad != null ? `Exercise Load ${Math.round(doc.deviceTrainingLoad)}.` : "",
+    cadence ? `Kadenca ${cadence} spm.` : "",
+    doc.totalAscent != null ? `Uspon ${doc.totalAscent} m.` : "",
+    m.decouplingPct != null ? `Decoupling ${m.decouplingPct}%.` : "",
+    laps ? `Laps po km: ${laps}.` : "",
+  ];
+  return parts.filter(Boolean).join(" ");
+}
+
 export function athleteBlock(profile: AthleteProfile) {
   const lthr = profile.lthr;
   const b = lthr ? LTHR_ZONE_BOUNDS.map((f) => Math.round(f * lthr)) : null;
@@ -69,6 +98,7 @@ export function athleteBlock(profile: AthleteProfile) {
     zonesLthr: b ? `Z1<${b[0]}, Z2 ${b[0]}-${b[1]}, Z3 ${b[1]}-${b[2]}, Z4 ${b[2]}-${b[3]}, Z5>${b[3]}` : null,
     kadencaCilj: "164-167 spm",
     notes: profile.notes ?? null,
+    coachContext: profile.coachContext ?? null,
   };
 }
 

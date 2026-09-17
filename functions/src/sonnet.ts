@@ -1,7 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { CoachPlan, COACH_PLAN_JSON_SCHEMA, type MetricsSummary } from "@kaden/shared-types";
 
-const MODEL = "claude-sonnet-5"; // CLAUDE.md bira Sonnet kao "mozak"
+const MODEL = "claude-haiku-4-5"; // jeftiniji; sa punim kontekstom + few-shot drži kvalitet
 const MAX_ATTEMPTS = 3; // 1 poziv + do 2 korekcije na osnovu Zod greške
 
 const SYSTEM = `Ti si iskusan trener trčanja. Analiziraš SAMO dostavljene brojeve;
@@ -27,8 +27,6 @@ export async function generatePlan(
       model: MODEL,
       max_tokens: 8192,
       system: SYSTEM,
-      // strukturiran izlaz — thinking nije potreban i trošio bi max_tokens (→ truncation)
-      ...({ thinking: { type: "disabled" } } as any),
       tools: [{
         name: "training_plan",
         description: "Vrati procenu i plan za sledeću nedelju.",

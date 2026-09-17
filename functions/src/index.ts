@@ -14,7 +14,8 @@ import {
 } from "@kaden/metrics";
 import { generatePlan } from "./sonnet.js";
 import { analyzeSession } from "./coach.js";
-import { enrichFromDoc, lapsFromDoc, assembleContext } from "./context.js";
+import { coachChat, type ChatMessage } from "./chat.js";
+import { sessionToDumpText } from "./context.js";
 
 initializeApp();
 const db = getFirestore();
@@ -23,6 +24,16 @@ const REGION = "europe-west1"; // poravnaj sa Firestore lokacijom
 const MEMORY_CAP = 20;
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
+
+/** Deterministička klasifikacija tipa treninga (za oznaku kartice). */
+function classifyType(m: SessionMetrics): string {
+  if (m.durMin >= 90) return "long";
+  const z4 = m.zonePct[3] ?? 0, z5 = m.zonePct[4] ?? 0;
+  if (z5 >= 8) return "intervals";
+  if (z4 >= 30) return "tempo";
+  if ((m.avgHr ?? 999) < 145) return "recovery";
+  return "easy";
+}
 
 /** Verifikuj Auth token + allowlist, vrati {uid, profile} ili pošalji error i vrati null. */
 async function authAndProfile(req: any, res: any): Promise<{ uid: string; profile: AthleteProfile } | null> {
@@ -96,9 +107,44 @@ export const syncFit = onRequest(
   },
 );
 
+/** POST /chat — konverzacija sa trenerom (multi-turn). Telefon šalje ceo razgovor. */
+export const chat = onRequest(
+  { region: REGION, cors: true, invoker: "public", secrets: [ANTHROPIC_API_KEY], timeoutSeconds: 180 },
+  async (req, res) => {
+    try {
+      const ap = await authAndProfile(req, res);
+      if (!ap) return;
+      const messages = req.body?.messages as ChatMessage[] | undefined;
+      if (!Array.isArray(messages) || messages.length === 0) {
+        res.status(400).json({ error: "missing_messages" }); return;
+      }
+      const sessSnap = await db.collection(`athletes/${ap.uid}/sessions`)
+        .orderBy("startTime", "desc").limit(12).get();
+      const recentHistory = sessSnap.docs
+        .map((d) => d.data().metrics as SessionMetrics)
+        .filter((m): m is SessionMetrics => !!m)
+        .reverse();
+      const memSnap = await db.doc(`athletes/${ap.uid}/memory/current`).get();
+      const memory = memSnap.exists
+        ? CoachingMemory.parse(memSnap.data())
+        : { observations: [], respondsWellTo: [], avoid: [] };
+
+      const reply = await coachChat(
+        messages,
+        { profile: ap.profile, goalContext: buildGoalContext(ap.profile, todayISO()), recentHistory, memory },
+        ANTHROPIC_API_KEY.value(),
+      );
+      res.status(200).json({ reply });
+    } catch (e) {
+      console.error("chat failed", e);
+      res.status(400).json({ error: String(e) });
+    }
+  },
+);
+
 /** Per-workout coach: okida se na novu sesiju → SessionAnalysis + update memorije. */
 export const onSessionCreated = onDocumentCreated(
-  { document: "athletes/{uid}/sessions/{sessionId}", region: REGION, secrets: [ANTHROPIC_API_KEY] },
+  { document: "athletes/{uid}/sessions/{sessionId}", region: REGION, secrets: [ANTHROPIC_API_KEY], timeoutSeconds: 180 },
   async (event) => {
     const { uid } = event.params;
     const doc = event.data?.data();
@@ -113,46 +159,45 @@ export const onSessionCreated = onDocumentCreated(
       console.log(`onSessionCreated: preskačem analizu za staru sesiju ${sDate} (${Math.round(ageDays)}d)`);
       return;
     }
+    // Bez upotrebljivog pulsa nema šta da se oceni (npr. HealthKit run bez HR uzoraka).
+    if (doc.metrics?.avgHr == null || (doc.sampleCount ?? 0) === 0) {
+      console.log(`onSessionCreated: preskačem analizu (nema HR) ${sDate}`);
+      return;
+    }
 
     try {
       const profile = AthleteProfile.parse((await db.doc(`athletes/${uid}`).get()).data());
 
-      // Istorija: poslednjih 8 sesija pre ove (za poređenje).
+      // Recent history (metrике) za coach kontekst — poređenje sa prethodnim.
       const histSnap = await db.collection(`athletes/${uid}/sessions`)
-        .orderBy("startTime", "desc").limit(9).get();
-      const history = histSnap.docs
-        .map((d) => d.data())
-        .filter((d) => d.sessionId !== doc.sessionId)
-        .slice(0, 8)
-        .map(enrichFromDoc);
+        .orderBy("startTime", "desc").limit(13).get();
+      const recentHistory = histSnap.docs
+        .map((d) => d.data().metrics as SessionMetrics)
+        .filter((m): m is SessionMetrics => !!m)
+        .filter((m) => m.date !== doc.metrics?.date)
+        .slice(0, 12).reverse();
 
-      // Memorija.
       const memSnap = await db.doc(`athletes/${uid}/memory/current`).get();
       const memory = memSnap.exists
         ? CoachingMemory.parse(memSnap.data())
         : { observations: [], respondsWellTo: [], avoid: [] };
 
-      const context = assembleContext({
-        profile,
-        focus: enrichFromDoc(doc),
-        focusLaps: lapsFromDoc(doc),
-        history,
-        goalContext: buildGoalContext(profile, todayISO()),
-        memory,
-        // TODO: intent iz plans/{isoWeek} matchovan po danu; + checkins subjective.
-      });
+      // Rekonstruiši "Garmin dump" iz izvučenih podataka (laps, zone, HR, TE, Load) +
+      // opcioni subjektivni unos → BOGATA slobodna analiza (kao chat), automatski.
+      const dump = sessionToDumpText(doc, profile);
+      const subjective = typeof doc.subjective === "string" && doc.subjective.trim()
+        ? `\n\nSubjektivno (kako se osećam): ${doc.subjective.trim()}` : "";
+      const narrative = await coachChat(
+        [{ role: "user", content: `${dump}${subjective}\n\nUradi analizu ovog treninga.` }],
+        { profile, goalContext: buildGoalContext(profile, todayISO()), recentHistory, memory },
+        ANTHROPIC_API_KEY.value(),
+      );
 
-      const analysis = await analyzeSession(context, ANTHROPIC_API_KEY.value());
-      await db.doc(`athletes/${uid}/analyses/${doc.sessionId}`)
-        .set({ ...analysis, createdAt: FieldValue.serverTimestamp() });
-
-      // Merge memoryUpdate → memory/current (dedup, cap).
-      const observations = [...memory.observations];
-      for (const o of analysis.memoryUpdate) if (!observations.includes(o)) observations.push(o);
-      await db.doc(`athletes/${uid}/memory/current`).set({
-        ...memory,
-        observations: observations.slice(-MEMORY_CAP),
-        updatedAtISO: new Date().toISOString(),
+      await db.doc(`athletes/${uid}/analyses/${doc.sessionId}`).set({
+        date: doc.metrics.date,
+        classification: classifyType(doc.metrics),
+        narrative,
+        createdAt: FieldValue.serverTimestamp(),
       });
     } catch (e) {
       console.error(`onSessionCreated failed ${uid}/${doc.sessionId}`, e);

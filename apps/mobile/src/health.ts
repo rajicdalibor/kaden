@@ -42,19 +42,23 @@ async function workoutToRawSession(run: any): Promise<RawSession> {
   const end = new Date(run.endDate);
   const durationSec = (+end - +start) / 1000;
   const distanceM = run.totalDistance?.quantity ?? 0;
-  const avgSpd = durationSec > 0 ? distanceM / durationSec : 0;
 
-  const hrSamples = await queryQuantitySamples("HKQuantityTypeIdentifierHeartRate", {
-    unit: "count/min",
-    limit: -1,
-    ascending: true,
-    filter: { date: { startDate: start, endDate: end } },
+  // HR vezan za KONKRETAN workout (pouzdanije od filtera po datumu); fallback na datum.
+  let hrSamples = await queryQuantitySamples("HKQuantityTypeIdentifierHeartRate", {
+    unit: "count/min", limit: -1, ascending: true,
+    filter: { workout: run },
   });
+  if (hrSamples.length === 0) {
+    hrSamples = await queryQuantitySamples("HKQuantityTypeIdentifierHeartRate", {
+      unit: "count/min", limit: -1, ascending: true,
+      filter: { date: { startDate: start, endDate: end } },
+    });
+  }
 
   const hrStream = hrSamples.map((s) => ({
     t: new Date(s.startDate).toISOString(),
     hr: Math.round(s.quantity),
-    spd: avgSpd, // HK HR uzorci nemaju brzinu → prosečna (dovoljno za zone/TRIMP)
+    spd: 0, // HK nema brzinu po uzorku → decoupling se NE računa (izbegava lažni signal)
   }));
   const hrs = hrStream.map((s) => s.hr).filter((h) => h > 0);
   const avgHr = hrs.length ? Math.round(hrs.reduce((a, b) => a + b, 0) / hrs.length) : null;
@@ -80,10 +84,23 @@ async function workoutToRawSession(run: any): Promise<RawSession> {
   };
 }
 
+/** Ukloni preklapajuće zapise istog trčanja (više izvora u Health-u) — čuva duži. */
+function dedupeOverlapping(runs: any[]): any[] {
+  const kept: any[] = [];
+  for (const r of runs) {
+    const rs = +new Date(r.startDate), re = +new Date(r.endDate);
+    const i = kept.findIndex((k) => rs < +new Date(k.endDate) && +new Date(k.startDate) < re);
+    if (i === -1) kept.push(r);
+    else if ((r.totalDistance?.quantity ?? 0) > (kept[i].totalDistance?.quantity ?? 0)) kept[i] = r;
+  }
+  return kept;
+}
+
 function runningWorkouts(workouts: readonly any[]): any[] {
-  return workouts
+  const runs = workouts
     .filter((w) => isRunning(w.workoutActivityType))
     .sort((a, b) => +new Date(b.startDate) - +new Date(a.startDate));
+  return dedupeOverlapping(runs);
 }
 
 /** Najskorije trčanje iz Apple Health → RawSession. */

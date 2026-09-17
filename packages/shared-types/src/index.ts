@@ -55,7 +55,8 @@ export const AthleteProfile = z.object({
   injuries: z.array(Injury).default([]),
   constraints: z.array(z.string()).default([]),
   notes: z.string().optional(),              // slobodno: "šta trener treba da zna"
-});
+  coachContext: z.string().optional(),       // bogat kontekst za coacha (nutricija, zdravlje,
+});                                           //   filozofija, trendovi) — kao chat system prompt
 export type AthleteProfile = z.infer<typeof AthleteProfile>;
 
 // ---------- Raw session (posle parsiranja FIT / HealthKit) ----------
